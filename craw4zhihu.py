@@ -1,0 +1,55 @@
+#!/usr/bin/env python
+# -*- encoding: utf-8 -*-
+# Created on 2019-03-01 17:55:37
+# Project: zhihu
+
+from pyspider.libs.base_handler import *
+import random
+import MySQLdb
+
+class Handler(BaseHandler):
+    crawl_config = {
+        'itag': 'v1',
+        'headers': {
+            'User-Agent': 'GoogleBot',
+            'Host' : 'www.zhihu.com',
+            'Accept':'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        }
+    }
+    def __init__(self):
+        self.db = MySQLdb.connect('localhost', 'root', 'root', 'pyspider', charset='utf8')
+    def add_question(self, title, content):
+        try:
+            CURSOR = self.db.cursor()
+            SQL = 'insert into question(title, content, user_id, created_date) values ("%s","%s",%d, %s)' % (title, content, random.randint(1, 10) , 'now()');
+            print SQL
+            cursor.execute(SQL)
+            qid = cursor.lastrowid
+            self.db.commit()
+        except Exception, e:
+            print e
+            self.db.rollback()
+        return 0
+            
+    @every(minutes=24 * 60)
+    def on_start(self):
+        self.crawl('https://www.zhihu.com/topic/19561132/top-answers', callback=self.index_page,validate_cert=False)
+
+    @config(age=10 * 24 * 60 * 60)
+    def index_page(self, response):
+        for each in response.doc('a[data-za-detail-view-element_name="Title"]').items():
+            self.crawl(each.attr.href, callback=self.detail_page, validate_cert=False)
+
+    @config(priority=2)
+    def detail_page(self, response):
+        items = response.doc('div.RichText.ztext').items()
+        title=response.doc('h1.QuestionHeader-title').text()
+        html=response.doc('span.RichText.ztext.CopyrightRichText-richText').html()
+        if html==None:
+            html=''
+        html=html.replace('"', '\\"')
+        qid=self.add_question(title, html)
+        return {
+            "url": response.url,
+            "title": response.doc('title').text(),
+        }
